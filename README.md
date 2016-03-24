@@ -62,3 +62,46 @@ return [
     ]
 ];
 ```
+
+Cluster Cache Configuration
+---------------------------
+
+By default Redis Cluster doesn't support MGET/MSET queries from several cluster nodes like this:
+
+```
+MGET {user10}.name {user10}.email {user10}.pass {user20}.name {user20}.email {user20}.pass someNotHashedKey
+```
+
+To implement this feature you can use ClusterCache:
+
+```php
+return [
+    //....
+    'components' => [
+		'class' => 'heyanlong\redis\ClusterCache',
+        'redis' => [
+            'class' => 'heyanlong\redis\Connection',
+            'master' => [
+                '10.155.20.169:6379',
+                '10.155.20.167:6391',
+                '10.155.20.168:6379',
+                '10.155.20.167:6380',
+//                'localhost:6379',
+            ],
+            'database' => 0,
+        ],
+
+
+    ]
+];
+```
+
+ClusterCache will group keys by hash, and divide one query to several queries:
+
+```
+MGET {user10}.name {user10}.email {user10}.pass
+MGET {user20}.name {user20}.email {user20}.pass
+MGET someNotHashedKey
+```
+
+...execute them, and then merge results.

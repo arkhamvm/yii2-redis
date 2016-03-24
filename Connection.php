@@ -80,13 +80,17 @@ class Connection extends \yii\redis\Connection
         \Yii::trace("Executing Redis Command: {$name}", __METHOD__);
         fwrite($this->_socket, $command);
 
-        return $this->parseResponse(implode(' ', $params), $this->_socket);
+		/**
+		 * There is a bug with "implode(' ', $params)". If not standart serializer is used (e.g. igbinary) - key value may contains spaces and "\n".
+		 * Therefore we need to pass original parameters array.
+		 */
+        return $this->parseResponse($params, $this->_socket);
     }
 
     private function parseResponse($command, $socket)
     {
         if (($line = fgets($socket)) === false) {
-            throw new Exception("Failed to read from socket.\nRedis command was: " . $command);
+            throw new Exception("Failed to read from socket.\nRedis command was: " . implode(' ', $command));
         }
 
         $type = $line[0];
@@ -106,13 +110,11 @@ class Connection extends \yii\redis\Connection
 
                     $hostname = $moved[2];
 
-                    $name = explode(' ', $command)[0];
-                    $param = array_slice(explode(' ', $command), 1);
-
-                    return $this->executeCommand($name, $param, $hostname);
+					// Some tricky with array_shift - no need to create an extra variables
+                    return $this->executeCommand(array_shift($command), $command, $hostname);
 
                 } else {
-                    throw new Exception("Redis error: " . $line . "\nRedis command was: " . $command);
+                    throw new Exception("Redis error: " . $line . "\nRedis command was: " . implode(' ', $command));
                 }
 
             case ':': // Integer reply
@@ -126,7 +128,7 @@ class Connection extends \yii\redis\Connection
                 $data = '';
                 while ($length > 0) {
                     if (($block = fread($socket, $length)) === false) {
-                        throw new Exception("Failed to read from socket.\nRedis command was: " . $command);
+                        throw new Exception("Failed to read from socket.\nRedis command was: " . implode(' ', $command));
                     }
                     $data .= $block;
                     $length -= mb_strlen($block, '8bit');
@@ -140,7 +142,7 @@ class Connection extends \yii\redis\Connection
                 }
                 return $data;
             default:
-                throw new Exception('Received illegal data from redis: ' . $line . "\nRedis command was: " . $command);
+                throw new Exception('Received illegal data from redis: ' . $line . "\nRedis command was: " . implode(' ', $command));
         }
     }
 
