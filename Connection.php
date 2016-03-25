@@ -15,10 +15,18 @@ class Connection extends \yii\redis\Connection
 
     const EVENT_AFTER_OPEN = 'afterOpen';
 
+	/** @var string[] $master Parameters for connections */
     public $master = [];
 
+	/** @var resource $_socket Current connection */
     private $_socket;
 
+	/** @var resource[] $_sockets Store all connections, to prevent recconects */
+    private $_sockets = [];
+
+	/**
+	 * @inheritdoc
+	 */
     public function __sleep()
     {
         $this->close();
@@ -26,21 +34,35 @@ class Connection extends \yii\redis\Connection
         return array_keys(get_object_vars($this));
     }
 
+	/**
+	 * @inheritdoc
+	 */
     public function getIsActive()
     {
         return $this->_socket !== null;
     }
 
+	/**
+	 * @inheritdoc
+	 *
+	 * Store all opened connections, to prevent recconects
+	 */
     public function open($hostname = '')
     {
-        if ($this->getIsActive() && $hostname == '') {
-            return;
-        }
+		if (!isset($this->_sockets[$hostname])) {
+			if ($this->getIsActive() && $hostname == '') {
+				return;
+			}
 
-        $hostname = $hostname == '' ? $this->master[array_rand($this->master)] : $hostname;
-        $this->_socket = $this->connect($hostname);
+			$hostname = $hostname == '' ? $this->master[array_rand($this->master)] : $hostname;
+			$this->_sockets[$hostname] = $this->connect($hostname);
+		}
+        $this->_socket = &$this->_sockets[$hostname];
     }
 
+	/**
+	 * @inheritdoc
+	 */
     public function close()
     {
         if ($this->_socket !== null) {
@@ -50,11 +72,17 @@ class Connection extends \yii\redis\Connection
         }
     }
 
+	/**
+	 * @inheritdoc
+	 */
     protected function initConnection()
     {
         $this->trigger(self::EVENT_AFTER_OPEN);
     }
 
+	/**
+	 * @inheritdoc
+	 */
     public function __call($name, $params)
     {
         $redisCommand = strtoupper(Inflector::camel2words($name, false));
@@ -67,6 +95,9 @@ class Connection extends \yii\redis\Connection
         }
     }
 
+	/**
+	 * @inheritdoc
+	 */
     public function executeCommand($name, $params = [], $hostname = '')
     {
         $this->open($hostname);
@@ -87,6 +118,9 @@ class Connection extends \yii\redis\Connection
         return $this->parseResponse($params, $this->_socket);
     }
 
+	/**
+	 * @inheritdoc
+	 */
     private function parseResponse($command, $socket)
     {
         if (($line = fgets($socket)) === false) {
@@ -146,6 +180,9 @@ class Connection extends \yii\redis\Connection
         }
     }
 
+	/**
+	 * @inheritdoc
+	 */
     private function connect($node)
     {
         $socket = null;
